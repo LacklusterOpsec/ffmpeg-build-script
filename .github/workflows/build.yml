@@ -11,9 +11,9 @@ on:
         type: boolean
         default: true
       disable:
-        description: "Comma-separated packages to skip (./build-ffmpeg --list-packages for names)"
+        description: "Comma-separated packages to skip - matches actual go2rtc usage: h264 (software x264 + hardware videotoolbox) and fdk_aac, nothing else"
         type: string
-        default: "lv2"
+        default: "lv2,vulkan,bluray,av1,rav1e,dav1d,svtav1,libvpx,x265,xvidcore,vid_stab,zimg,opencore,lame,opus,libogg,libtiff,libpng,libwebp,srt,libzmq"
       ffmpeg_version:
         description: "FFmpeg version: blank = pinned default, or 'latest' / 'snapshot' / e.g. 9.0.2"
         type: string
@@ -32,7 +32,7 @@ jobs:
     # MacBook Air is Intel, so this is the one that matters: an arm64
     # binary from the default runner would not run on it at all.
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    timeout-minutes: 240
 
     steps:
       - name: Checkout
@@ -45,6 +45,12 @@ jobs:
       # they're not installed on the runner.
       - name: Keep docs out of the build
         run: brew unlink doxygen sphinx-doc 2>/dev/null || true
+
+      # Costs seconds, not hours - names get validated at the start of
+      # --build too, but printing the real list here makes it easy to
+      # double-check the `disable` input before committing to a long run.
+      - name: List available packages
+        run: ./build-ffmpeg --list-packages
 
       # Reuses already-downloaded sources and already-built libraries across
       # runs. The script itself skips any package whose pinned version
