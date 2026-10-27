@@ -11,9 +11,9 @@ on:
         type: boolean
         default: true
       disable:
-        description: "Comma-separated packages to skip - matches actual go2rtc usage: h264 (software x264 + hardware videotoolbox) and fdk_aac, nothing else"
+        description: "Comma-separated packages to skip - matches actual go2rtc usage: h264 (software x264 + hardware videotoolbox) and fdk_aac, nothing else. Names come from this workflow's own 'List available packages' step output."
         type: string
-        default: "lv2,vulkan,bluray,av1,rav1e,dav1d,svtav1,libvpx,x265,xvidcore,vid_stab,zimg,opencore,lame,opus,libogg,libtiff,libpng,libwebp,srt,libzmq"
+        default: "lv2,vulkan,bluray,av1,rav1e,dav1d,svtav1,libvpx,x265,xvidcore,vid_stab,zimg,opencore,lame,opus,libogg,libpng,libwebp,srt,libzmq,openh264,vvenc,soxr,twolame,libmysofa,rubberband,libopenmpt,libgme,chromaprint,openal,libjxl,openjpeg,libass,fribidi,harfbuzz,gperf,fontconfig,libunibreak,vapoursynth,avisynth,ladspa,zvbi,frei0r"
       ffmpeg_version:
         description: "FFmpeg version: blank = pinned default, or 'latest' / 'snapshot' / e.g. 9.0.2"
         type: string
