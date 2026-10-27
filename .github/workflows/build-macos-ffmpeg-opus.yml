@@ -1,0 +1,113 @@
+name: Build FFmpeg (macOS, Intel, with Opus)
+
+# Manual trigger only - this is a long native compile, not something you
+# want firing on every push. Run it from the repo's Actions tab ("Run
+# workflow"), or: gh workflow run build-macos-ffmpeg-opus.yml
+on:
+  workflow_dispatch:
+    inputs:
+      enable_gpl_and_non_free:
+        description: "Include GPL / non-free codecs (x264, x265, fdk-aac, ...)"
+        type: boolean
+        default: true
+      disable:
+        description: "Comma-separated packages to skip - same lean go2rtc set as the other workflow, minus opus. Names come from this workflow's own 'List available packages' step output."
+        type: string
+        default: "lv2,vulkan,bluray,av1,rav1e,dav1d,svtav1,libvpx,x265,xvidcore,vid_stab,zimg,opencore,lame,libogg,libpng,libwebp,srt,libzmq,openh264,vvenc,soxr,twolame,libmysofa,rubberband,libopenmpt,libgme,chromaprint,openal,libjxl,openjpeg,libass,fribidi,harfbuzz,gperf,fontconfig,libunibreak,vapoursynth,avisynth,ladspa,zvbi,frei0r"
+      ffmpeg_version:
+        description: "FFmpeg version: blank = pinned default, or 'latest' / 'snapshot' / e.g. 9.0.2"
+        type: string
+        default: ""
+
+# Separate group from the non-opus workflow's - otherwise triggering one
+# would cancel a run of the other on the same ref.
+concurrency:
+  group: ffmpeg-macos-build-opus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macos-15-intel is the only GitHub-hosted runner still on real x86_64
+    # hardware - macos-latest/14/15 are Apple Silicon only. Your 2015
+    # MacBook Air is Intel, so this is the one that matters: an arm64
+    # binary from the default runner would not run on it at all.
+    runs-on: macos-15-intel
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Avoids the exact failure from the local build: if doxygen/sphinx-build
+      # are on PATH, meson tries to pull an extra doc-generation subproject
+      # over the network and dies on cert verification. Nothing here needs
+      # docs, so just make sure neither tool is visible. Harmless no-op if
+      # they're not installed on the runner.
+      - name: Keep docs out of the build
+        run: brew unlink doxygen sphinx-doc 2>/dev/null || true
+
+      # Costs seconds, not hours - names get validated at the start of
+      # --build too, but printing the real list here makes it easy to
+      # double-check the `disable` input before committing to a long run.
+      - name: List available packages
+        run: ./build-ffmpeg --list-packages
+
+      # actions/cache rejects any key containing a comma, and `disable` is a
+      # comma-separated list - so hash the options into a plain hex string
+      # first instead of interpolating them into the key directly.
+      - name: Compute cache key
+        id: cachekey
+        run: |
+          RAW="${{ inputs.enable_gpl_and_non_free }}-${{ inputs.disable }}-${{ inputs.ffmpeg_version }}"
+          echo "hash=$(echo -n "$RAW" | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # Separate cache namespace from the non-opus workflow's, since the
+      # built library set differs.
+      - name: Cache sources and build workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages
+            workspace
+          key: ffmpeg-macos-intel-opus-${{ hashFiles('build-ffmpeg', 'src/**') }}-${{ steps.cachekey.outputs.hash }}
+          restore-keys: |
+            ffmpeg-macos-intel-opus-
+
+      - name: Build
+        env:
+          SKIPINSTALL: "yes" # non-interactive - the script normally prompts to install at the end
+          VERBOSE: "yes"
+        run: |
+          ARGS="--build"
+          if [ "${{ inputs.enable_gpl_and_non_free }}" = "true" ]; then
+            ARGS="$ARGS --enable-gpl-and-non-free"
+          fi
+          if [ -n "${{ inputs.disable }}" ]; then
+            ARGS="$ARGS --disable=${{ inputs.disable }}"
+          fi
+          if [ -n "${{ inputs.ffmpeg_version }}" ]; then
+            ARGS="$ARGS --ffmpeg-version=${{ inputs.ffmpeg_version }}"
+          fi
+          echo "Running: ./build-ffmpeg $ARGS"
+          # Heartbeat so a quiet compile step never looks stalled in the log -
+          # same trick the project's own CI workflow uses.
+          ( while sleep 300; do echo "=====[ ${SECONDS}s still running ]====="; done ) &
+          HEARTBEAT_PID=$!
+          ./build-ffmpeg $ARGS
+          kill "$HEARTBEAT_PID"
+
+      - name: Verify architecture and sanity-check the binary
+        run: |
+          file workspace/bin/ffmpeg workspace/bin/ffprobe workspace/bin/ffplay
+          workspace/bin/ffmpeg -version | head -5
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-macos-x86_64-opus
+          path: |
+            workspace/bin/ffmpeg
+            workspace/bin/ffprobe
+            workspace/bin/ffplay
+          retention-days: 14
+          if-no-files-found: error
