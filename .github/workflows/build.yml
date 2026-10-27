@@ -52,6 +52,15 @@ jobs:
       - name: List available packages
         run: ./build-ffmpeg --list-packages
 
+      # actions/cache rejects any key containing a comma, and `disable` is a
+      # comma-separated list - so hash the options into a plain hex string
+      # first instead of interpolating them into the key directly.
+      - name: Compute cache key
+        id: cachekey
+        run: |
+          RAW="${{ inputs.enable_gpl_and_non_free }}-${{ inputs.disable }}-${{ inputs.ffmpeg_version }}"
+          echo "hash=$(echo -n "$RAW" | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
       # Reuses already-downloaded sources and already-built libraries across
       # runs. The script itself skips any package whose pinned version
       # hasn't changed, so a warm cache turns a ~45-60 min cold build into a
@@ -62,7 +71,7 @@ jobs:
           path: |
             packages
             workspace
-          key: ffmpeg-macos-intel-${{ hashFiles('build-ffmpeg', 'src/**') }}-${{ inputs.enable_gpl_and_non_free }}-${{ inputs.disable }}-${{ inputs.ffmpeg_version }}
+          key: ffmpeg-macos-intel-${{ hashFiles('build-ffmpeg', 'src/**') }}-${{ steps.cachekey.outputs.hash }}
           restore-keys: |
             ffmpeg-macos-intel-
 
