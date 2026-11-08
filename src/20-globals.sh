@@ -7,6 +7,16 @@ CWD=$(pwd)
 # shellcheck disable=SC2034 # $PACKAGES is read by later fragments
 PACKAGES="$CWD/packages"
 WORKSPACE="$CWD/workspace"
+# configure compiles and runs test binaries in $TMPDIR. A read-only or noexec /tmp
+# makes it fail with "Sanity test failed" only at the FFmpeg step, so probe it now.
+_tmp_probe="${TMPDIR:-/tmp}/.ffbuild-probe.$$"
+if ! { printf '#!/bin/sh\nexit 0\n' >"$_tmp_probe" && chmod +x "$_tmp_probe" && "$_tmp_probe"; } 2>/dev/null; then
+    export TMPDIR="$WORKSPACE/tmp"
+    mkdir -p "$TMPDIR"
+    echo "Note: ${_tmp_probe%/*} is not writable or executable, using $TMPDIR instead"
+fi
+rm -f "$_tmp_probe"
+unset _tmp_probe
 # shellcheck disable=SC2034 # $CFLAGS is read by later fragments
 CFLAGS="-I$WORKSPACE/include -Wno-int-conversion"
 # shellcheck disable=SC2034 # $LDFLAGS is read by later fragments
